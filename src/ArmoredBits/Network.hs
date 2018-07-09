@@ -21,9 +21,9 @@ module ArmoredBits.Network
   ) where
     
 --------------------------------------------------------------------------------
-import Control.Concurrent (forkFinally, forkIO, threadDelay)
+import Control.Concurrent (threadDelay)
 import Control.Concurrent.STM.TVar
-import Control.Monad (forever, void, when)
+import Control.Monad (forever, when)
 import Control.Monad.STM (STM, atomically)
 import Data.Foldable (traverse_)
 import Data.Map.Strict (Map)
@@ -35,8 +35,11 @@ import System.Clock
 import System.IO
 --------------------------------------------------------------------------------
 import ArmoredBits.Messages
+import ArmoredBits.TaskManager
 import ArmoredBits.Types
+import ArmoredBits.Util
 --------------------------------------------------------------------------------
+import Debug.Trace
 
 -- $client
 --
@@ -113,63 +116,59 @@ initClient cid h =
 
 -- | Run the 'Client''s various threads for message handling
 --   This includes a ping check, rate check, and actual message parsing.
-runClient :: TVar Client -> IO ()
-runClient c0 = do
-  void $ forkIO ping
-  void $ forkIO rate
-  void $ forkFinally run cleanup
+runClient :: Handle -> TVar Client -> IO ()
+runClient h c0 = runTasks [ping h, run h] (cleanup h)
   where
     -- Ping client to check for aliveness
-    ping = do
-      rc <- atomically $ readTVar c0
-      forever $ do
-        writeMessage (view clientHandle rc) Ping
-        threadDelay 5000000 -- 5s
+    ping h = forever $ do
+      writeMessage h Ping
+      traceIO "PING"
+      threadDelay $ inSeconds 5
 
-    rate = forever $ do
+    rate h = forever $ do
       rc <- atomically $ readTVar c0
       -- Send client a Warning message if they are over 10 messages in 100ms
       when (view clientMsgCount rc > 10) $ do
-        writeMessage (view clientHandle rc) Warning
+        writeMessage h Warning
         atomically $ modifyTVar' c0 (set clientMsgRate Bad)
       -- Move client back to Good status if they are behaving
       when (and [view clientMsgCount rc < 10, view clientMsgRate rc == Bad]) $
         atomically $ modifyTVar' c0 (set clientMsgRate Good)
-      threadDelay 100000 -- 100ms
+      threadDelay $ inMilliseconds 100
 
     -- Capture incoming messages
-    run = forever $ do
-      rwc <- atomically $ readTVar c0
-      stream (view clientHandle rwc) >>= \case
-        Left _    -> return () -- TODO: Log failed messages?
-        Right msg ->
+    run h = forever $ do
+      traceIO "run"
+      readMessage h >>= \case
+        Left e    -> do
+          traceIO $ show e
+          return () -- TODO: Log failed messages?
+        Right msg -> do
+          traceIO $ show msg
           -- Only handle messages if this client is under the proper rate
-          when (view clientMsgRate rwc == Good) $ do
-            uc <- process rwc msg
-            atomically $ writeTVar c0 uc
+          -- when (view clientMsgRate rwc == Good) $ do
+          t <- fmap toNanoSecs (getTime Monotonic)
+          atomically $ do
+            rc <- readTVar c0
+            writeTVar c0 (process rc t msg)
 
     -- Process messages and client logic
-    process c1 msg = do
-      t <- fmap toNanoSecs (getTime Monotonic)
+    process c t msg = do
       case msg of
-        Unknown -> return c1
+        Unknown -> c
         -- Client is alive and Pong'ed the server
-        Pong -> return $ set clientLastPongTime t c1
+        Pong -> set clientLastPongTime t c
         -- Client sent a relevant message
-        _ -> do
-          -- Update relevant Client state
-          return
-            $ over clientMsgQueue (msg :)
-            . set clientLastMsgTime t
-            . over clientMsgCount (+ 1)
-            $ c1
+        _ ->
+            -- Update relevant Client state
+            over clientMsgQueue (msg :) .
+            set clientLastMsgTime t .
+            over clientMsgCount (+ 1) $ c
 
     -- Client cleanup
-    cleanup _ = do
-      rc <- atomically $ do
-        modifyTVar' c0 (set clientState ClientDisconnected)
-        readTVar c0
-      hClose $ view clientHandle rc
+    cleanup h = do
+      atomically $ modifyTVar' c0 (set clientState ClientDisconnected)
+      hClose h
 
 --------------------------------------------------------------------------------
 
@@ -210,9 +209,7 @@ initServer = do
 
 -- | Run the 'Server''s main network loop
 runServer :: Server -> IO ()
-runServer s = do
-  void $ forkIO check
-  run
+runServer s = runTasks [run] cleanup
   where
     -- TODO: Make these values come from a config
     run = serve (Host "127.0.0.1") "5555" $ \(sock, _) -> do
@@ -223,7 +220,7 @@ runServer s = do
         c0 <- initClient cid h
         modifyTVar' (view serverGameClients s) (Map.insert cid c0)
         return c0
-      runClient c1
+      runClient h c1
 
     -- Check if any clients have timed out after 10s
     -- Flag as disconnected
@@ -232,9 +229,14 @@ runServer s = do
       atomically $ do
           cs <- readTVar (view serverGameClients s)
           traverse_ (update t) (Map.elems cs)
-      threadDelay 1000000 -- 1s
+      threadDelay $ inSeconds 1
       where
         update t c0 = do
           rc <- readTVar c0
-          when (t - view clientLastPongTime rc > 10000000) $
+          when (t - view clientLastPongTime rc > toInteger (inSeconds 10)) $
             modifyTVar' c0 (set clientState ClientDisconnected)
+
+    -- Perform any final resource cleanup.
+    cleanup = do
+      putStrLn "Server exited."
+      return ()

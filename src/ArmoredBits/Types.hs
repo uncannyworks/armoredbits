@@ -41,7 +41,7 @@ instance Serialise Token where
 data LoginState
   = LoginSuccessful
   | LoginFailed
-  deriving (Eq, Enum, Generic)
+  deriving (Eq, Enum, Generic, Show)
 
 -- | 'Serialize' instance for 'LoginState'
 instance Serialise LoginState where
@@ -52,7 +52,7 @@ instance Serialise LoginState where
 data Rate
   = Good
   | Bad
-  deriving (Eq)
+  deriving (Eq, Show)
 
 -- $client
 
@@ -63,7 +63,7 @@ data ClientState
   | ClientNeedsInitialState
   | ClientProcessing Rate
   | ClientDisconnected
-  deriving (Eq)
+  deriving (Eq, Show)
 
 -- $server
 
@@ -72,7 +72,7 @@ data ServerState
   = ServerInitializing
   | ServerReady
   | ServerShuttingDown
-  deriving (Eq, Enum, Generic)
+  deriving (Eq, Enum, Generic, Show)
 
 -- | 'Serialize' instance for 'ServerState'
 instance Serialise ServerState where
@@ -89,7 +89,7 @@ data WorldState
   | GamePhase
   | GameOverPhase
   | StartNewRound
-  deriving (Eq, Enum, Generic)
+  deriving (Eq, Enum, Generic, Show)
 
 -- | 'Serialize' instance for 'WorldState'
 instance Serialise WorldState where

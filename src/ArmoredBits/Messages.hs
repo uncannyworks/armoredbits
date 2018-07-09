@@ -9,7 +9,7 @@ Description : CBOR message encoding/decoding and parsing
 |-}
 module ArmoredBits.Messages
   ( Message(..)
-  , stream
+  , readMessage
   , writeMessage
   ) where
   
@@ -42,7 +42,7 @@ data Message
   | States { serverState :: ServerState, worldState :: WorldState }
   -- Unknown
   | Unknown
-  deriving (Generic)
+  deriving (Generic, Show)
 
 instance Serialise Message where
   encode = encodeMessage
@@ -79,8 +79,8 @@ decodeMessage = do
 -- | Incrementally stream message data from a handle
 --
 -- See: https://github.com/well-typed/cborg/issues/156
-stream :: Handle -> IO (Either String Message)
-stream h = do
+readMessage :: Handle -> IO (Either String Message)
+readMessage h = do
   s <- stToIO $ deserialiseIncremental (decode @Message)
   streamIt h s
 
