@@ -19,6 +19,11 @@ import Data.Text
 import GHC.Generics
 --------------------------------------------------------------------------------
 
+-- $util
+
+type Timeout = Int
+type RateLimit = Int
+
 -- $messages
 
 -- | 'Token' tag type
@@ -37,34 +42,36 @@ instance Serialise Token where
   encode = encode . untag
   decode = mkToken <$> decode
 
--- | Whether the connecting 'Client' passed a valid 'Token' or not
+-- | Whether the connecting 'Peer' passed a valid 'Token' or not
 data LoginState
   = LoginSuccessful
   | LoginFailed
-  deriving (Eq, Enum, Generic)
+  deriving (Eq, Enum, Generic, Show)
 
 -- | 'Serialize' instance for 'LoginState'
 instance Serialise LoginState where
   encode = encodeInt . fromEnum
   decode = toEnum <$> decodeInt
 
--- | Whether the 'Client' has gone over the message rate or not
+-- | Whether the 'Peer' has gone over the message rate or not
 data Rate
   = Good
   | Bad
-  deriving (Eq)
+  deriving (Eq, Show)
 
+--------------------------------------------------------------------------------
 -- $client
 
--- | The current state the 'Client' is in
-data ClientState
-  = ClientConnected
-  | ClientAuthenticated
-  | ClientNeedsInitialState
-  | ClientProcessing Rate
-  | ClientDisconnected
-  deriving (Eq)
+-- | The current state the 'Peer' is in
+data PeerState
+  = PeerConnected
+  | PeerAuthenticated
+  | PeerNeedsInitialState
+  | PeerProcessing Rate
+  | PeerDisconnected
+  deriving (Eq, Show)
 
+--------------------------------------------------------------------------------
 -- $server
 
 -- | The current state the 'Server' is in
@@ -72,13 +79,14 @@ data ServerState
   = ServerInitializing
   | ServerReady
   | ServerShuttingDown
-  deriving (Eq, Enum, Generic)
+  deriving (Eq, Enum, Generic, Show)
 
 -- | 'Serialize' instance for 'ServerState'
 instance Serialise ServerState where
   encode = encodeInt . fromEnum
   decode = toEnum <$> decodeInt
 
+--------------------------------------------------------------------------------
 -- $world
 
 -- | The current state the 'World' is in
@@ -89,7 +97,7 @@ data WorldState
   | GamePhase
   | GameOverPhase
   | StartNewRound
-  deriving (Eq, Enum, Generic)
+  deriving (Eq, Enum, Generic, Show)
 
 -- | 'Serialize' instance for 'WorldState'
 instance Serialise WorldState where
