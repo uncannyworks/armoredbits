@@ -1,11 +1,11 @@
 {-|
 
-Module      : ArmoredBits.TaskManager
+Module      : ArmoredBits.Control.Tasks
 Description : A concurrent thread manager which properly handles thread shutdown
-              on server exit.
+              on engine exit.
 
 |-}
-module ArmoredBits.TaskManager
+module ArmoredBits.Control.Tasks
   ( mkTaskManager
   , runTasks
   , execTask

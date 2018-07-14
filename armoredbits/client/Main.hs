@@ -8,19 +8,22 @@ import Network.Simple.TCP
 import qualified Network.Socket as N
 import System.IO
 --------------------------------------------------------------------------------
-import ArmoredBits.Messages
-import ArmoredBits.TaskManager
+import ArmoredBits.Config.Parse
+import ArmoredBits.Control.Tasks
+import ArmoredBits.Network.Messages
 --------------------------------------------------------------------------------
 import Debug.Trace
 
 main :: IO ()
-main =
-  connect "127.0.0.1" "5555" $ \(sock, _) -> do
+main = do
+  o <- getOpts
+  connect (optionHost o) (optionPort o) $ \(sock, _) -> do
     h <- N.socketToHandle sock ReadWriteMode
+    hSetBuffering h NoBuffering
     runTasks [run h] (cleanup h)
   where
     run h = forever $ do
-      readMessage h >>= \case
+      clientRecv h >>= \case
         Left e    -> do
           traceIO $ show e
           return ()
@@ -29,7 +32,7 @@ main =
           case msg of
             Ping -> do
               traceIO "PONG"
-              writeMessage h Pong
+              clientSend h Pong
             _    -> do
               traceIO "nonsense"
               return ()

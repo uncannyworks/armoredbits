@@ -1,6 +1,6 @@
 name:                armoredbits
 version:             0.1.0.0
-synopsis:            Realtime Multiplayer AI Mech Battles
+synopsis:            Network Game Engine
 homepage:            http://armoredbits.com
 license:             Apache-2.0
 license-file:        LICENSE
@@ -13,13 +13,17 @@ cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
-  exposed-modules:     ArmoredBits.Messages
-                     , ArmoredBits.Network
-                     , ArmoredBits.TaskManager
+  exposed-modules:     ArmoredBits.Config.Parse
+                     , ArmoredBits.Control.Tasks
+                     , ArmoredBits.Network.Messages
+                     , ArmoredBits.Network.Peer
+                     , ArmoredBits.Network.Server
                      , ArmoredBits.Types
                      , ArmoredBits.Util
-  build-depends:       base >=4.10 && <4.11
-                     , apecs
+                     -- Internal
+                     , ArmoredBits.Network.Internal.Peer
+  build-depends:       apecs
+                     , base >=4.10 && <4.11
                      , async
                      , bytestring
                      , cborg
@@ -28,6 +32,7 @@ library
                      , microlens-platform
                      , network
                      , network-simple
+                     , optparse-applicative
                      , serialise
                      , stm
                      , tagged
@@ -35,20 +40,35 @@ library
   default-language:    Haskell2010
   ghc-options:         -Wall -j -O0 -v0
 
+test-suite armoredbits-test
+  type:                exitcode-stdio-1.0
+  hs-source-dirs:      test
+  main-is:             Main.hs
+  other-modules:       ArmoredBits.Network.MessagesSpec
+                     , ArmoredBits.Network.PeerSpec
+  build-depends:       armoredbits
+                     , base
+                     , clock
+                     , directory
+                     , hspec
+                     , microlens-platform
+                     , stm
+  default-language:    Haskell2010
+  ghc-options:         -Wall -j -O0 -v0
 
 executable armoredbits-server
-  hs-source-dirs:      server
+  hs-source-dirs:      armoredbits/server
   main-is:             Main.hs
-  build-depends:       base >=4.10 && <4.11
-                     , armoredbits
+  build-depends:       armoredbits
+                     , base >=4.10 && <4.11
   default-language:    Haskell2010
   ghc-options:         -threaded -rtsopts -with-rtsopts=-maxN2 -Wall -j -O0 -v0
 
 executable armoredbits-client
-  hs-source-dirs:      client
+  hs-source-dirs:      armoredbits/client
   main-is:             Main.hs
-  build-depends:       base >=4.10 && <4.11
-                     , armoredbits
+  build-depends:       armoredbits
+                     , base >=4.10 && <4.11
                      , network
                      , network-simple
   default-language:    Haskell2010
