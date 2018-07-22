@@ -74,6 +74,15 @@ data PeerState
 --------------------------------------------------------------------------------
 -- $server
 
+-- | 'PeerId' tag type
+data PeerIdTag
+-- | A 'PeerId' is a 'Server' assigned identifier
+type PeerId = Tagged PeerIdTag Int
+
+-- | 'PeerId' constructor
+mkPeerId :: Int-> PeerId
+mkPeerId = Tagged
+
 -- | The current state the 'Server' is in
 data ServerState
   = ServerInitializing

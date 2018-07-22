@@ -46,9 +46,11 @@ test-suite armoredbits-test
   main-is:             Main.hs
   other-modules:       ArmoredBits.Network.MessagesSpec
                      , ArmoredBits.Network.PeerSpec
+                     , ArmoredBits.Network.ServerSpec
   build-depends:       armoredbits
                      , base
                      , clock
+                     , containers
                      , directory
                      , hspec
                      , microlens-platform

@@ -98,6 +98,7 @@ peerSpec = hspec $ do
       view peerLastMsgTime v `shouldBe` 123
       view peerMsgCount v `shouldBe` 1
       view peerMsgQueue v `shouldBe` [Disconnect]
+      view peerMsgRate v `shouldBe` Good
 
       removeFile handle
 

@@ -51,7 +51,6 @@ checkKeepAlive tout t p = do
   when (t - view peerLastPongTime rp > toInteger (inSeconds tout)) $
     modifyTVar' p (set peerState PeerDisconnected)
 
--- | 'Peer' holds the unique server id, network socket handle, state, etc.
 -- | 'Server' side check for aliveness.
 pingPeer :: Handle -> IO ()
 pingPeer h = forever $ do

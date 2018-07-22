@@ -27,7 +27,7 @@ data Peer
   = Peer
   {
   -- | 'Server' assigned id
-    _peerId :: Int
+    _peerId :: PeerId
   -- | Socket converted to a Handle
   , _peerHandle :: Handle
   -- | Current state of 'Peer'
@@ -48,13 +48,12 @@ data Peer
 
 makeLenses ''Peer
 
--- | Initialize a new 'Peer' with a unique id and socket handle.
+-- | Initialize a new 'Peer' with a unique 'PeerId' and socket handle.
 --
 -- This occurs in the 'STM' monad to give the caller a chance to atomically
 -- wrap other actions in the same transaction.
-mkPeer :: Int -> Handle -> STM (TVar Peer)
-mkPeer cid h =
-  newTVar (Peer cid h PeerConnected "" 0 0 Good 0 [])
+mkPeer :: PeerId -> Handle -> STM (TVar Peer)
+mkPeer pid h = newTVar (Peer pid h PeerConnected "" 0 0 Good 0 [])
 
 resetRate' :: TVar Peer -> STM ()
 resetRate' p = modifyTVar' p (set peerMsgCount 0)
@@ -77,12 +76,15 @@ processMessages r t msg p =
 -- | 'Peer' received a relevant message, update internal state.
 updateMessageQueue :: RateLimit -> Integer -> CMessage -> Peer -> Peer
 updateMessageQueue r t msg =
-  rate . over peerMsgQueue (msg :) . set peerLastMsgTime t . over peerMsgCount (+ 1)
-  where
-    rate p =
-      if view peerMsgCount p > r
-      then set peerMsgRate Bad p
-      else set peerMsgRate Good p
+  updateMsgRate r .
+  over peerMsgQueue (msg :) .
+  set peerLastMsgTime t .
+  over peerMsgCount (+ 1)
+
+updateMsgRate :: RateLimit -> Peer -> Peer
+updateMsgRate r p
+  | view peerMsgCount p > r = set peerMsgRate Bad p
+  | otherwise = set peerMsgRate Good p
 
 runPeer' :: RateLimit -> Handle -> TVar Peer -> IO ()
 runPeer' r h p = do

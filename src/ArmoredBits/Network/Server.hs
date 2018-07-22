@@ -14,7 +14,7 @@ module ArmoredBits.Network.Server where
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.STM.TVar
 import Control.Monad (forever, when)
-import Control.Monad.STM (atomically)
+import Control.Monad.STM (STM, atomically)
 import Data.Foldable (traverse_)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
@@ -43,9 +43,9 @@ data Server
   -- | Whether the 'Server' is ready to start handling connections or not
     _serverState :: ServerState
   -- | A unique id for new connecting peers
-  , _serverIdCounter :: TVar Int
+  , _serverIdCounter :: TVar PeerId
   -- | A map of all 'Peer''s by their unique id
-  , _serverGamePeers :: TVar (Map Int (TVar Peer))
+  , _serverGamePeers :: TVar (Map PeerId (TVar Peer))
   } deriving (Generic)
 
 makeLenses ''Server
@@ -57,9 +57,23 @@ mkServer = do
   cs <- newTVarIO Map.empty
   return (Server ServerInitializing co cs)
 
+-- | Generate and return a new 'PeerId'
+getPeerId :: Server -> STM PeerId
+getPeerId s = do
+  modifyTVar' (view serverIdCounter s) (+ 1)
+  readTVar (view serverIdCounter s)
+
+-- | Initialize a new 'Peer'
+createPeer :: Handle -> Server -> STM (TVar Peer)
+createPeer h s = do
+  pid <- getPeerId s
+  p <- mkPeer pid h
+  modifyTVar' (view serverGamePeers s) (Map.insert pid p)
+  return p
+
+-- | Run the actual network 'Server' socket handling and 'Peer' initialization.
 runServer :: Options -> Server -> IO ()
 runServer o s =
-  -- TODO: Make these values come from a config
   serve (Host (optionHost o)) (optionPort o) $ \(sock, _) -> do
 
     -- Convert Socket to Handle
@@ -67,13 +81,8 @@ runServer o s =
     hSetBuffering h NoBuffering
 
     -- Prepare new Peer
-    c1 <- atomically $ do
-      modifyTVar' (view serverIdCounter s) (+ 1)
-      cid <- readTVar (view serverIdCounter s)
-      c0 <- mkPeer cid h
-      modifyTVar' (view serverGamePeers s) (Map.insert cid c0)
-      return c0
-    initPeer 10 h c1 -- 10 msg rate limit
+    p <- atomically $ createPeer h s
+    initPeer 10 h p -- 10 msg rate limit
 
 -- | Checks if any 'Peer's have timed out after a specified timeout.
 --
