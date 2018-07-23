@@ -12,25 +12,27 @@ import System.IO
 --------------------------------------------------------------------------------
 import Test.Hspec
 --------------------------------------------------------------------------------
-import ArmoredBits.Types
---------------------------------------------------------------------------------
 import ArmoredBits.Network.Peer
 import ArmoredBits.Network.Server
+import ArmoredBits.Types
 --------------------------------------------------------------------------------
 
 handle :: String
 handle = ".test.handle"
 
+ts :: [Token]
+ts = ["TOkEN1"]
+
 serverSpec :: IO ()
 serverSpec = hspec $ do
   describe "ArmoredBits.Network.Server" $ do
     it "mkServer" $ do
-      s <- mkServer
+      s <- mkServer ts
 
       view serverState s `shouldBe` ServerInitializing
 
     it "getPeerId" $ do
-      s <- mkServer
+      s <- mkServer ts
       (p1, p2) <- atomically $ do
         p1 <- getPeerId s
         p2 <- readTVar (view serverIdCounter s)
@@ -40,7 +42,7 @@ serverSpec = hspec $ do
 
     it "createPeer" $ do
       h <- openFile handle WriteMode
-      s <- mkServer
+      s <- mkServer ts
       tp <- atomically $ createPeer h s
 
       (p, pid, ps) <- atomically $

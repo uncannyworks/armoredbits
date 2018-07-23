@@ -13,6 +13,7 @@ module ArmoredBits.Network.Peer
   ( checkKeepAlive
   , initPeer
   -- * rexports
+  , PeerEnv(..)
   , Peer(..)
   , peerId
   , peerHandle
@@ -68,16 +69,16 @@ resetRate  p = forever $ do
   threadDelay $ inMilliseconds 100
 
 -- | The actual network loop which reads messages from the 'Handle'.
-runPeer :: RateLimit -> Handle -> TVar Peer -> IO ()
-runPeer r h p = forever $ do
+runPeer :: PeerEnv -> Handle -> TVar Peer -> IO ()
+runPeer e h p = forever $ do
   traceIO "run"
-  runPeer' r h p
+  runPeer' e h p
 
 -- | Initialize and run the 'Peer''s various threads for message handling.
 --
 -- This includes a ping check, rate check, and actual message parsing.
-initPeer :: RateLimit -> Handle -> TVar Peer -> IO ()
-initPeer r h p = runTasks [pingPeer h, runPeer r h p, resetRate p] cleanup
+initPeer :: PeerEnv -> Handle -> TVar Peer -> IO ()
+initPeer e h p = runTasks [pingPeer h, runPeer e h p, resetRate p] cleanup
   where
     -- Peer cleanup
     cleanup = do

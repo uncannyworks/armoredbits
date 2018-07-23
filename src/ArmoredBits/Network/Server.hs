@@ -46,16 +46,18 @@ data Server
   , _serverIdCounter :: TVar PeerId
   -- | A map of all 'Peer''s by their unique id
   , _serverGamePeers :: TVar (Map PeerId (TVar Peer))
+  -- | A list of all valid 'Token's that identify valid clients
+  , _serverValidTokens :: [Token]
   } deriving (Generic)
 
 makeLenses ''Server
 
 -- | Initialize a new 'Server'
-mkServer :: IO Server
-mkServer = do
+mkServer :: [Token] -> IO Server
+mkServer ts = do
   co <- newTVarIO 0
   cs <- newTVarIO Map.empty
-  return (Server ServerInitializing co cs)
+  return (Server ServerInitializing co cs ts)
 
 -- | Generate and return a new 'PeerId'
 getPeerId :: Server -> STM PeerId
@@ -82,7 +84,7 @@ runServer o s =
 
     -- Prepare new Peer
     p <- atomically $ createPeer h s
-    initPeer 10 h p -- 10 msg rate limit
+    initPeer (PeerEnv 10 (optionTokens o)) h p -- 10 msg rate limit
 
 -- | Checks if any 'Peer's have timed out after a specified timeout.
 --

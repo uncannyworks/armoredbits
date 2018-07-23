@@ -4,6 +4,7 @@ module ArmoredBits.Network.PeerSpec where
 
 --------------------------------------------------------------------------------
 import Control.Concurrent.STM.TVar
+import Control.Monad.Reader (runReaderT)
 import Control.Monad.STM (atomically)
 import Lens.Micro.Platform
 import System.Directory (removeFile)
@@ -21,6 +22,12 @@ import ArmoredBits.Network.Internal.Peer
 
 handle :: String
 handle = ".test.handle"
+
+validToken :: Token
+validToken = mkToken "TOkEN1"
+
+pe :: PeerEnv
+pe = PeerEnv 10 [validToken]
 
 peerSpec :: IO ()
 peerSpec = hspec $ do
@@ -82,17 +89,42 @@ peerSpec = hspec $ do
     it "processMessages - Pong" $ do
       h <- openFile handle WriteMode
       p <- atomically $ mkPeer 1 h
-      atomically $ modifyTVar' p (processMessages 10 123 Pong)
+      atomically $ do
+        rp <- readTVar p
+        v <- runReaderT (processMessages 123 Pong rp) pe
+        case v of
+          Right wp     -> writeTVar p wp
+          Left (_, wp) -> writeTVar p wp
       v <- readTVarIO p
 
       view peerLastPongTime v `shouldBe` 123
 
       removeFile handle
 
+    it "processMessages - SendToken" $ do
+      h <- openFile handle WriteMode
+      p <- atomically $ mkPeer 1 h
+      atomically $ do
+        rp <- readTVar p
+        v <- runReaderT (processMessages 123 (SendToken validToken) rp) pe
+        case v of
+          Right wp     -> writeTVar p wp
+          Left (_, wp) -> writeTVar p wp
+      v <- readTVarIO p
+
+      view peerToken v `shouldBe` validToken
+
+      removeFile handle
+
     it "processMessages - Any" $ do
       h <- openFile handle WriteMode
       p <- atomically $ mkPeer 1 h
-      atomically $ modifyTVar' p (processMessages 10 123 Disconnect)
+      atomically $ do
+        rp <- readTVar p
+        v <- runReaderT (processMessages 123 Disconnect rp) pe
+        case v of
+          Right wp     -> writeTVar p wp
+          Left (_, wp) -> writeTVar p wp
       v <- readTVarIO p
 
       view peerLastMsgTime v `shouldBe` 123
@@ -109,7 +141,7 @@ peerSpec = hspec $ do
 
       h <- openFile handle ReadMode
       p <- atomically $ mkPeer 1 h
-      runPeer' 10 h p
+      runPeer' pe h p
       hClose h
       v <- readTVarIO p
 

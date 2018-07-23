@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -12,6 +13,7 @@ module ArmoredBits.Network.Internal.Peer where
 
 --------------------------------------------------------------------------------
 import Control.Concurrent.STM.TVar
+import Control.Monad.Reader (MonadReader, asks, runReaderT)
 import Control.Monad.STM (STM, atomically)
 import GHC.Generics
 import Lens.Micro.Platform
@@ -22,6 +24,17 @@ import ArmoredBits.Network.Messages
 import ArmoredBits.Types
 --------------------------------------------------------------------------------
 import Debug.Trace
+
+data PeerEnv
+  = PeerEnv
+  {
+  -- | Message rate limit
+    _peerEnvRateLimit :: RateLimit
+  -- | List of valid tokens to match against
+  , _peerEnvTokens :: [Token]
+  } deriving (Generic)
+
+makeLenses ''PeerEnv
 
 data Peer
   = Peer
@@ -65,18 +78,34 @@ pingPeer' :: Handle -> IO ()
 pingPeer' h = serverSend h Ping
 
 -- | Processes incoming messages and updates the 'Peer'.
-processMessages :: RateLimit -> Integer -> CMessage -> Peer -> Peer
-processMessages r t msg p =
-  case msg of
-    -- Peer is alive and Pong'ed the server
-    Pong -> set peerLastPongTime t p
-    -- Peer sent a relevant message
-    _ -> updateMessageQueue r t msg p
+processMessages :: (Monad m, MonadReader PeerEnv m)
+  => Integer -> CMessage -> Peer -> m (Either (SMessage, Peer) Peer)
+processMessages t msg p = do
+  r <- asks (view peerEnvRateLimit)
+  let pu = updateMsgRate r p
+  case view peerMsgRate pu of
+    Bad  -> return (Left (Warning, pu))
+    Good ->
+      case msg of
+        -- Peer is alive and Pong'ed the server
+        Pong -> return (Right (set peerLastPongTime t pu))
+        -- Peer sent a token
+        -- Must be in valid list of server tokens
+        (SendToken tk) -> updateToken tk pu
+        -- Peer sent a relevant message
+        _ -> return (Right (updateMessageQueue t msg pu))
+
+updateToken :: (Monad m, MonadReader PeerEnv m)
+  => Token -> Peer -> m (Either (SMessage, Peer) Peer)
+updateToken t p = do
+  ts <- asks (view peerEnvTokens)
+  if t `elem` ts
+  then return (Right (set peerToken t p))
+  else return (Left (InvalidToken, p))
 
 -- | 'Peer' received a relevant message, update internal state.
-updateMessageQueue :: RateLimit -> Integer -> CMessage -> Peer -> Peer
-updateMessageQueue r t msg =
-  updateMsgRate r .
+updateMessageQueue :: Integer -> CMessage -> Peer -> Peer
+updateMessageQueue t msg =
   over peerMsgQueue (msg :) .
   set peerLastMsgTime t .
   over peerMsgCount (+ 1)
@@ -86,20 +115,21 @@ updateMsgRate r p
   | view peerMsgCount p > r = set peerMsgRate Bad p
   | otherwise = set peerMsgRate Good p
 
-runPeer' :: RateLimit -> Handle -> TVar Peer -> IO ()
-runPeer' r h p = do
+runPeer' :: PeerEnv -> Handle -> TVar Peer -> IO ()
+runPeer' e h p = do
   serverRecv h >>= \case
-    Left e    -> do
-      traceIO $ show e
+    Left err -> do
+      traceIO $ show err
       return () -- TODO: Log failed messages?
     Right msg -> do
       traceIO $ show msg
       t <- fmap toNanoSecs (getTime Monotonic)
-      s <- atomically $ do
+      out <- atomically $ do
         rp <- readTVar p
-        let v = processMessages r t msg rp
-        writeTVar p v
-        return (view peerMsgRate v)
-      case s of
-        Good -> return ()
-        Bad  -> serverSend h Warning
+        v <- runReaderT (processMessages t msg rp) e
+        case v of
+          Right wp     -> writeTVar p wp >> return Nothing
+          Left (m, wp) -> writeTVar p wp >> return (Just m)
+      case out of
+        Nothing -> return ()
+        Just m  -> serverSend h m

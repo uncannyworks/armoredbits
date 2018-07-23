@@ -32,6 +32,7 @@ library
                      , microlens-platform
                      , network
                      , network-simple
+                     , mtl
                      , optparse-applicative
                      , serialise
                      , stm
@@ -54,6 +55,7 @@ test-suite armoredbits-test
                      , directory
                      , hspec
                      , microlens-platform
+                     , mtl
                      , stm
   default-language:    Haskell2010
   ghc-options:         -Wall -j -O0 -v0

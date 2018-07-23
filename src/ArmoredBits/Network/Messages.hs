@@ -30,6 +30,8 @@ import Data.Monoid ((<>))
 import GHC.Generics
 import System.IO
 --------------------------------------------------------------------------------
+import ArmoredBits.Types
+--------------------------------------------------------------------------------
 
 -- | Messages which can be sent by a 'Server'.
 --
@@ -37,6 +39,7 @@ import System.IO
 data SMessage
   = Ping
   | Warning
+  | InvalidToken
   | SUnknown
   deriving (Eq, Generic, Show)
 
@@ -49,6 +52,8 @@ encodeServerMessage Ping =
   encodeListLen 1 <> encodeWord 1
 encodeServerMessage Warning =
   encodeListLen 1 <> encodeWord 3
+encodeServerMessage InvalidToken =
+  encodeListLen 1 <> encodeWord 5
 encodeServerMessage SUnknown = mempty
 
 decodeServerMessage :: Decoder s SMessage
@@ -58,6 +63,7 @@ decodeServerMessage = do
   case (len, tag) of
     (1, 1) -> pure Ping
     (1, 3) -> pure Warning
+    (1, 5) -> pure InvalidToken
     _      -> pure SUnknown
 
 -- | Messages which can be sent by a 'Client'.
@@ -66,6 +72,7 @@ decodeServerMessage = do
 data CMessage
   = Pong
   | Disconnect
+  | SendToken Token
   | CUnknown
   deriving (Eq, Generic, Show)
 
@@ -78,6 +85,8 @@ encodeClientMessage Pong =
   encodeListLen 1 <> encodeWord 2
 encodeClientMessage Disconnect =
   encodeListLen 1 <> encodeWord 4
+encodeClientMessage (SendToken t) =
+  encodeListLen 2 <> encodeWord 6 <> encode t
 encodeClientMessage CUnknown = mempty
 
 decodeClientMessage :: Decoder s CMessage
@@ -87,6 +96,7 @@ decodeClientMessage = do
   case (len, tag) of
     (1, 2) -> pure Pong
     (1, 4) -> pure Disconnect
+    (2, 6) -> SendToken <$> decode
     _      -> pure CUnknown
 
 -- | Send a 'CMessage' from a client.

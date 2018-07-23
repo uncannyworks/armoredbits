@@ -6,13 +6,19 @@ module ArmoredBits.Config.Parse where
 import Data.Monoid ((<>))
 import Options.Applicative
 --------------------------------------------------------------------------------
+import ArmoredBits.Types
+--------------------------------------------------------------------------------
 
 -- | Options passed in on the command line.
 data Options
   = Options
-  { optionHost :: String
-  , optionPort :: String
+  { optionHost   :: String
+  , optionPort   :: String
+  , optionTokens :: [Token]
   }
+
+tokens :: Parser [Token]
+tokens = many (argument str (metavar "TOKEN..."))
 
 options :: Parser Options
 options = Options
@@ -29,16 +35,17 @@ options = Options
      <> short 'p'
      <> help "port to host on or connect to"
      <> showDefault
-     <> value "275555"
+     <> value "27555"
      <> metavar "PORT"
       )
+  <*> tokens
 
 opts :: ParserInfo Options
 opts =
-  info options
+  info (helper <*> options)
     ( fullDesc
-   <> progDesc "options"
-   <> header "options"
+   <> progDesc "Start a server that accepts a space separated list of TOKEN..."
+   <> header "armoredbits-[server|client]"
     )
 
 getOpts :: IO Options
