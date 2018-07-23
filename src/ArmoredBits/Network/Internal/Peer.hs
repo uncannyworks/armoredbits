@@ -69,7 +69,7 @@ mkPeer :: PeerId -> Handle -> STM (TVar Peer)
 mkPeer pid h = newTVar (Peer pid h PeerConnected "" 0 0 Good 0 [])
 
 resetRate' :: TVar Peer -> STM ()
-resetRate' p = modifyTVar' p (set peerMsgCount 0)
+resetRate' p = modifyTVar' p (set peerMsgCount 0 . set peerMsgRate Good)
 
 disconnectPeer :: TVar Peer -> STM ()
 disconnectPeer p = modifyTVar' p (set peerState PeerDisconnected)
