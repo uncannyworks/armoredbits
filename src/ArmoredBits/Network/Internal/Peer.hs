@@ -15,6 +15,7 @@ module ArmoredBits.Network.Internal.Peer where
 import Control.Concurrent.STM.TVar
 import Control.Monad.Reader (MonadReader, asks, runReaderT)
 import Control.Monad.STM (STM, atomically)
+import Data.List (foldl')
 import GHC.Generics
 import Lens.Micro.Platform
 import System.Clock
@@ -82,7 +83,7 @@ processMessages :: (Monad m, MonadReader PeerEnv m)
   => Integer -> CMessage -> Peer -> m (Either (SMessage, Peer) Peer)
 processMessages t msg p = do
   r <- asks (view peerEnvRateLimit)
-  let pu = updateMsgRate r p
+  let pu = updateMsgRate r . checkBadPeer r $ p
   case view peerMsgRate pu of
     Bad  -> return (Left (Warning, pu))
     Good ->
@@ -114,6 +115,16 @@ updateMsgRate :: RateLimit -> Peer -> Peer
 updateMsgRate r p
   | view peerMsgCount p > r = set peerMsgRate Bad p
   | otherwise = set peerMsgRate Good p
+
+-- | If a 'Peer' sends nothing but CUnknown it is misbehaving and should be disconnected.
+checkBadPeer :: RateLimit -> Peer -> Peer
+checkBadPeer r p
+  | r == chk  = set peerState PeerDisconnected p
+  | otherwise = p
+  where
+    f c CUnknown = c + 1
+    f c _        = c
+    chk = foldl' f 0 (view peerMsgQueue p)
 
 runPeer' :: PeerEnv -> Handle -> TVar Peer -> IO ()
 runPeer' e h p = do

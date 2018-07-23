@@ -134,6 +134,28 @@ peerSpec = hspec $ do
 
       removeFile handle
 
+    it "updateMsgRate" $ do
+      h <- openFile handle WriteMode
+      p <- atomically $ mkPeer 1 h
+      atomically $ modifyTVar' p
+        (updateMsgRate 10 . set peerMsgCount 11)
+      v <- readTVarIO p
+
+      view peerMsgRate v `shouldBe` Bad
+
+      removeFile handle
+
+    it "checkBadPeer" $ do
+      h <- openFile handle WriteMode
+      p <- atomically $ mkPeer 1 h
+      atomically $ modifyTVar' p
+        (checkBadPeer 10 . set peerMsgQueue (take 10 $ repeat CUnknown))
+      v <- readTVarIO p
+
+      view peerState v `shouldBe` PeerDisconnected
+
+      removeFile handle
+
     it "runPeer'" $ do
       fw <- openFile handle WriteMode
       clientSend fw Disconnect

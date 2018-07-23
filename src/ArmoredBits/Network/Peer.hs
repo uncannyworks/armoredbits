@@ -12,7 +12,7 @@ Description : 'Peer' network handling
 module ArmoredBits.Network.Peer
   ( checkKeepAlive
   , initPeer
-  -- * rexports
+  -- * re-exports
   , PeerEnv(..)
   , Peer(..)
   , peerId
