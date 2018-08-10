@@ -84,7 +84,8 @@ runServer o s =
 
     -- Prepare new Peer
     p <- atomically $ createPeer h s
-    initPeer (PeerEnv 10 (optionTokens o)) h p -- 10 msg rate limit
+   -- 100ms reset, 10 msg rate limit
+    initPeer (PeerEnv 100 10 (optionTokens o)) h p
 
 -- | Checks if any 'Peer's have timed out after a specified timeout.
 --
@@ -92,7 +93,7 @@ runServer o s =
 checkPeers :: Timeout -> Server -> IO ()
 checkPeers tout s = forever $ do
   t <- fmap toNanoSecs (getTime Monotonic)
-  ps <-atomically $ do
+  ps <- atomically $ do
       ps <- readTVar (view serverGamePeers s)
       traverse_ (checkKeepAlive tout t) (Map.elems ps)
       return ps

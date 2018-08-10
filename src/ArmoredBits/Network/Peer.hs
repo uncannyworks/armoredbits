@@ -63,10 +63,10 @@ pingPeer h = forever $ do
 --
 -- If the 'Peer' goes over the rate they are sent a `Warning`
 -- and blocked from sending new messages until the next tick.
-resetRate :: TVar Peer -> IO ()
-resetRate  p = forever $ do
+resetRate :: PeerEnv -> TVar Peer -> IO ()
+resetRate e p = forever $ do
   atomically $ resetRate' p
-  threadDelay $ inMilliseconds 100
+  threadDelay $ inMilliseconds (view peerEnvRateReset e)
 
 -- | The actual network loop which reads messages from the 'Handle'.
 runPeer :: PeerEnv -> Handle -> TVar Peer -> IO ()
@@ -78,7 +78,7 @@ runPeer e h p = forever $ do
 --
 -- This includes a ping check, rate check, and actual message parsing.
 initPeer :: PeerEnv -> Handle -> TVar Peer -> IO ()
-initPeer e h p = runTasks [pingPeer h, runPeer e h p, resetRate p] cleanup
+initPeer e h p = runTasks [pingPeer h, runPeer e h p, resetRate e p] cleanup
   where
     -- Peer cleanup
     cleanup = do

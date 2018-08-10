@@ -31,6 +31,8 @@ data PeerEnv
   {
   -- | Message rate limit
     _peerEnvRateLimit :: RateLimit
+  -- | Message rate rest speed in milliseconds
+  , _peerEnvRateReset :: Int
   -- | List of valid tokens to match against
   , _peerEnvTokens :: [Token]
   } deriving (Generic)
@@ -47,7 +49,7 @@ data Peer
   -- | Current state of 'Peer'
   , _peerState :: PeerState
   -- | Token user has passed to identify self
-  , _peerToken :: Token
+  , _peerToken :: Maybe Token
   -- | Time in nanoseconds since last pong from 'Peer'
   , _peerLastPongTime :: Integer
   -- | Time in nanoseconds since last message received
@@ -67,7 +69,7 @@ makeLenses ''Peer
 -- This occurs in the 'STM' monad to give the caller a chance to atomically
 -- wrap other actions in the same transaction.
 mkPeer :: PeerId -> Handle -> STM (TVar Peer)
-mkPeer pid h = newTVar (Peer pid h PeerConnected "" 0 0 Good 0 [])
+mkPeer pid h = newTVar (Peer pid h PeerConnected Nothing 0 0 Good 0 [])
 
 resetRate' :: TVar Peer -> STM ()
 resetRate' p = modifyTVar' p (set peerMsgCount 0 . set peerMsgRate Good)
@@ -90,18 +92,24 @@ processMessages t msg p = do
       case msg of
         -- Peer is alive and Pong'ed the server
         Pong -> return (Right (set peerLastPongTime t pu))
+        -- Peer signalled a disconnect
+        Disconnect -> return (Right (set peerState PeerDisconnected pu))
         -- Peer sent a token
         -- Must be in valid list of server tokens
         (SendToken tk) -> updateToken tk pu
         -- Peer sent a relevant message
-        _ -> return (Right (updateMessageQueue t msg pu))
+        -- Must have sent a valid token first
+        _ ->
+          case view peerToken p of
+            Nothing -> return (Left (InvalidToken, p))
+            Just _  -> return (Right (updateMessageQueue t msg pu))
 
 updateToken :: (Monad m, MonadReader PeerEnv m)
   => Token -> Peer -> m (Either (SMessage, Peer) Peer)
 updateToken t p = do
   ts <- asks (view peerEnvTokens)
   if t `elem` ts
-  then return (Right (set peerToken t p))
+  then return (Right (set peerToken (Just t) p))
   else return (Left (InvalidToken, p))
 
 -- | 'Peer' received a relevant message, update internal state.

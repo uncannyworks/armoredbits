@@ -14,9 +14,11 @@ module ArmoredBits.Types where
 import Codec.Serialise
 import Codec.Serialise.Decoding
 import Codec.Serialise.Encoding
+import Data.Monoid ((<>))
 import Data.Tagged
-import Data.Text
+import Data.Text (Text)
 import GHC.Generics
+import Prelude hiding (decodeFloat, encodeFloat)
 --------------------------------------------------------------------------------
 
 -- $util
@@ -62,6 +64,15 @@ data Rate
 --------------------------------------------------------------------------------
 -- $client
 
+-- | 'PeerId' tag type
+data PeerIdTag
+-- | A 'PeerId' is a 'Server' assigned identifier
+type PeerId = Tagged PeerIdTag Int
+
+-- | 'PeerId' constructor
+mkPeerId :: Int-> PeerId
+mkPeerId = Tagged
+
 -- | The current state the 'Peer' is in
 data PeerState
   = PeerConnected
@@ -73,15 +84,6 @@ data PeerState
 
 --------------------------------------------------------------------------------
 -- $server
-
--- | 'PeerId' tag type
-data PeerIdTag
--- | A 'PeerId' is a 'Server' assigned identifier
-type PeerId = Tagged PeerIdTag Int
-
--- | 'PeerId' constructor
-mkPeerId :: Int-> PeerId
-mkPeerId = Tagged
 
 -- | The current state the 'Server' is in
 data ServerState
@@ -112,3 +114,30 @@ data WorldState
 instance Serialise WorldState where
   encode = encodeInt . fromEnum
   decode = toEnum <$> decodeInt
+
+--------------------------------------------------------------------------------
+-- $game
+
+data V2 = V2 Float Float deriving (Eq, Show)
+
+instance Serialise V2 where
+  encode (V2 a b) = encodeFloat a <> encodeFloat b
+  decode = V2 <$> decodeFloat <*> decodeFloat
+
+type Position = V2
+type Rotation = V2
+
+-- | 'EntityId' tag type
+data EntityIdTag
+-- | A 'EntityId' is a 'World' assigned identifier
+type EntityId = Tagged EntityIdTag Int
+
+-- | 'EntityId' constructor
+mkEntityId :: Int-> EntityId
+mkEntityId = Tagged
+
+-- | 'Serialize' instance for 'EntityId
+instance Serialise EntityId where
+  encode = encode . untag
+  decode = mkEntityId <$> decode
+

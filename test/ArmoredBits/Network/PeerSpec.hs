@@ -27,14 +27,18 @@ validToken :: Token
 validToken = mkToken "TOkEN1"
 
 pe :: PeerEnv
-pe = PeerEnv 10 [validToken]
+pe = PeerEnv 100 10 [validToken]
+
+mkSpecPeer :: IO (TVar Peer)
+mkSpecPeer = do
+  h <- openFile handle WriteMode
+  atomically $ mkPeer 1 h
 
 peerSpec :: IO ()
 peerSpec = hspec $ do
   describe "ArmoredBits.Network.Peer" $ do
     it "mkPeer" $ do
-      h <- openFile handle WriteMode
-      p <- atomically $ mkPeer 1 h
+      p <- mkSpecPeer
       v <- readTVarIO p
 
       view peerId v `shouldBe` 1
@@ -42,8 +46,7 @@ peerSpec = hspec $ do
       removeFile handle
 
     it "checkKeepAlive" $ do
-      h <- openFile handle WriteMode
-      p <- atomically $ mkPeer 1 h
+      p <- mkSpecPeer
       atomically $ checkKeepAlive 10 (toInteger $ inSeconds 11) p
       v <- readTVarIO p
 
@@ -53,8 +56,7 @@ peerSpec = hspec $ do
 
   describe "ArmoredBits.Network.Internal.Peer" $ do
     it "resetRate'" $ do
-      h <- openFile handle WriteMode
-      p <- atomically $ mkPeer 1 h
+      p <- mkSpecPeer
       atomically $ modifyTVar' p (set peerMsgCount 100)
       atomically $ resetRate' p
       v <- readTVarIO p
@@ -64,8 +66,7 @@ peerSpec = hspec $ do
       removeFile handle
 
     it "disconnectPeer" $ do
-      h <- openFile handle WriteMode
-      p <- atomically $ mkPeer 1 h
+      p <- mkSpecPeer
       atomically $ disconnectPeer p
       v <- readTVarIO p
 
@@ -87,8 +88,7 @@ peerSpec = hspec $ do
       removeFile handle
 
     it "processMessages - Pong" $ do
-      h <- openFile handle WriteMode
-      p <- atomically $ mkPeer 1 h
+      p <- mkSpecPeer
       atomically $ do
         rp <- readTVar p
         v <- runReaderT (processMessages 123 Pong rp) pe
@@ -102,8 +102,7 @@ peerSpec = hspec $ do
       removeFile handle
 
     it "processMessages - SendToken" $ do
-      h <- openFile handle WriteMode
-      p <- atomically $ mkPeer 1 h
+      p <- mkSpecPeer
       atomically $ do
         rp <- readTVar p
         v <- runReaderT (processMessages 123 (SendToken validToken) rp) pe
@@ -112,16 +111,15 @@ peerSpec = hspec $ do
           Left (_, wp) -> writeTVar p wp
       v <- readTVarIO p
 
-      view peerToken v `shouldBe` validToken
+      view peerToken v `shouldBe` Just validToken
 
       removeFile handle
 
     it "processMessages - Any" $ do
-      h <- openFile handle WriteMode
-      p <- atomically $ mkPeer 1 h
+      p <- mkSpecPeer
       atomically $ do
-        rp <- readTVar p
-        v <- runReaderT (processMessages 123 Disconnect rp) pe
+        rp <- return . set peerToken (Just validToken) =<< readTVar p
+        v <- runReaderT (processMessages 123 CTest rp) pe
         case v of
           Right wp     -> writeTVar p wp
           Left (_, wp) -> writeTVar p wp
@@ -129,14 +127,13 @@ peerSpec = hspec $ do
 
       view peerLastMsgTime v `shouldBe` 123
       view peerMsgCount v `shouldBe` 1
-      view peerMsgQueue v `shouldBe` [Disconnect]
+      view peerMsgQueue v `shouldBe` [CTest]
       view peerMsgRate v `shouldBe` Good
 
       removeFile handle
 
     it "updateMsgRate" $ do
-      h <- openFile handle WriteMode
-      p <- atomically $ mkPeer 1 h
+      p <- mkSpecPeer
       atomically $ modifyTVar' p
         (updateMsgRate 10 . set peerMsgCount 11)
       v <- readTVarIO p
@@ -146,8 +143,7 @@ peerSpec = hspec $ do
       removeFile handle
 
     it "checkBadPeer" $ do
-      h <- openFile handle WriteMode
-      p <- atomically $ mkPeer 1 h
+      p <- mkSpecPeer
       atomically $ modifyTVar' p
         (checkBadPeer 10 . set peerMsgQueue (take 10 $ repeat CUnknown))
       v <- readTVarIO p
@@ -158,16 +154,19 @@ peerSpec = hspec $ do
 
     it "runPeer'" $ do
       fw <- openFile handle WriteMode
-      clientSend fw Disconnect
+      clientSend fw CTest
       hClose fw
 
       h <- openFile handle ReadMode
-      p <- atomically $ mkPeer 1 h
+      p <- atomically $ do
+        p <- mkPeer 1 h
+        modifyTVar' p (set peerToken (Just validToken))
+        return p
       runPeer' pe h p
       hClose h
       v <- readTVarIO p
 
       view peerMsgCount v `shouldBe` 1
-      view peerMsgQueue v `shouldBe` [Disconnect]
+      view peerMsgQueue v `shouldBe` [CTest]
 
       removeFile handle
