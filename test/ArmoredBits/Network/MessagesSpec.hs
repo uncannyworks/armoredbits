@@ -19,26 +19,26 @@ messagesSpec = hspec $ do
   describe "ArmoredBits.Network.Message" $ do
     it "serverSend/clientRecv Ping" $ do
       fw <- openFile handle WriteMode
-      serverSend fw Ping
+      serverSend fw (MessageServer Ping)
       hClose fw
 
       fr <- openFile handle ReadMode
       Right ping <- clientRecv fr
       hClose fr
 
-      ping `shouldBe` Ping
+      ping `shouldBe` (MessageServer Ping)
 
       removeFile handle
 
     it "clientSend/serverRecv Pong" $ do
       fw <- openFile handle WriteMode
-      clientSend fw Pong
+      clientSend fw (MessageClient Pong)
       hClose fw
 
       fr <- openFile handle ReadMode
       Right pong <- serverRecv fr
       hClose fr
 
-      pong `shouldBe` Pong
+      pong `shouldBe` (MessageClient Pong)
 
       removeFile handle

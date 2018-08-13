@@ -23,7 +23,7 @@ module ArmoredBits.Network.Peer
   , peerLastMsgTime
   , peerMsgRate
   , peerMsgCount
-  , peerMsgQueue
+  , peerEventQueue
   , mkPeer
   ) where
 

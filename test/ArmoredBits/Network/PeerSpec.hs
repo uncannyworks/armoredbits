@@ -83,7 +83,7 @@ peerSpec = hspec $ do
       Right ping <- clientRecv fr
       hClose fr
 
-      ping `shouldBe` Ping
+      ping `shouldBe` (MessageServer Ping)
 
       removeFile handle
 
@@ -91,7 +91,7 @@ peerSpec = hspec $ do
       p <- mkSpecPeer
       atomically $ do
         rp <- readTVar p
-        v <- runReaderT (processMessages 123 Pong rp) pe
+        v <- runReaderT (processMessages 123 (MessageClient Pong) rp) pe
         case v of
           Right wp     -> writeTVar p wp
           Left (_, wp) -> writeTVar p wp
@@ -105,7 +105,7 @@ peerSpec = hspec $ do
       p <- mkSpecPeer
       atomically $ do
         rp <- readTVar p
-        v <- runReaderT (processMessages 123 (SendToken validToken) rp) pe
+        v <- runReaderT (processMessages 123 (MessageClient (SendToken validToken)) rp) pe
         case v of
           Right wp     -> writeTVar p wp
           Left (_, wp) -> writeTVar p wp
@@ -119,15 +119,15 @@ peerSpec = hspec $ do
       p <- mkSpecPeer
       atomically $ do
         rp <- return . set peerToken (Just validToken) =<< readTVar p
-        v <- runReaderT (processMessages 123 CTest rp) pe
+        v <- runReaderT (processMessages 123 (EventClient ClientEventTest) rp) pe
         case v of
-          Right wp     -> writeTVar p wp
+          Right wp    -> writeTVar p wp
           Left (_, wp) -> writeTVar p wp
       v <- readTVarIO p
 
       view peerLastMsgTime v `shouldBe` 123
       view peerMsgCount v `shouldBe` 1
-      view peerMsgQueue v `shouldBe` [CTest]
+      view peerEventQueue v `shouldBe` [ClientEventTest]
       view peerMsgRate v `shouldBe` Good
 
       removeFile handle
@@ -145,7 +145,7 @@ peerSpec = hspec $ do
     it "checkBadPeer" $ do
       p <- mkSpecPeer
       atomically $ modifyTVar' p
-        (checkBadPeer 10 . set peerMsgQueue (take 10 $ repeat CUnknown))
+        (checkBadPeer 10 . set peerEventQueue (take 10 $ repeat ClientEventUnknown))
       v <- readTVarIO p
 
       view peerState v `shouldBe` PeerDisconnected
@@ -154,7 +154,7 @@ peerSpec = hspec $ do
 
     it "runPeer'" $ do
       fw <- openFile handle WriteMode
-      clientSend fw CTest
+      clientSend fw (EventClient ClientEventTest)
       hClose fw
 
       h <- openFile handle ReadMode
@@ -167,6 +167,6 @@ peerSpec = hspec $ do
       v <- readTVarIO p
 
       view peerMsgCount v `shouldBe` 1
-      view peerMsgQueue v `shouldBe` [CTest]
+      view peerEventQueue v `shouldBe` [ClientEventTest]
 
       removeFile handle

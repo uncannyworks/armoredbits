@@ -58,8 +58,8 @@ data Peer
   , _peerMsgRate :: Rate
   -- | Total messages since last rate check
   , _peerMsgCount :: Int
-  -- | Incoming peer 'CMessage's to be read by the 'Server'
-  , _peerMsgQueue :: [CMessage]
+  -- | Incoming peer 'ClientEvent' messages to be read by the 'Server'
+  , _peerEventQueue :: [ClientEvent]
   } deriving (Generic)
 
 makeLenses ''Peer
@@ -78,11 +78,11 @@ disconnectPeer :: TVar Peer -> STM ()
 disconnectPeer p = modifyTVar' p (set peerState PeerDisconnected)
 
 pingPeer' :: Handle -> IO ()
-pingPeer' h = serverSend h Ping
+pingPeer' h = serverSend h (MessageServer Ping)
 
 -- | Processes incoming messages and updates the 'Peer'.
 processMessages :: (Monad m, MonadReader PeerEnv m)
-  => Integer -> CMessage -> Peer -> m (Either (SMessage, Peer) Peer)
+  => Integer -> CMessage -> Peer -> m (Either (ServerMessage, Peer) Peer)
 processMessages t msg p = do
   r <- asks (view peerEnvRateLimit)
   let pu = updateMsgRate r . checkBadPeer r $ p
@@ -90,22 +90,32 @@ processMessages t msg p = do
     Bad  -> return (Left (Warning, pu))
     Good ->
       case msg of
-        -- Peer is alive and Pong'ed the server
-        Pong -> return (Right (set peerLastPongTime t pu))
-        -- Peer signalled a disconnect
-        Disconnect -> return (Right (set peerState PeerDisconnected pu))
-        -- Peer sent a token
-        -- Must be in valid list of server tokens
-        (SendToken tk) -> updateToken tk pu
-        -- Peer sent a relevant message
-        -- Must have sent a valid token first
-        _ ->
-          case view peerToken p of
-            Nothing -> return (Left (InvalidToken, p))
-            Just _  -> return (Right (updateMessageQueue t msg pu))
+        (MessageClient m) -> processClientMessage t m pu
+        (EventClient m) ->
+          case view peerToken pu of
+            Nothing -> return (Left (InvalidToken, pu))
+            Just _  -> return (Right (processClientEvent t m pu))
+        _ -> return (Left (MessageUnknown, pu))
+
+processClientMessage :: (Monad m, MonadReader PeerEnv m)
+  => Integer
+  -> ClientMessage
+  -> Peer
+  -> m (Either (ServerMessage, Peer) Peer)
+processClientMessage t msg p =
+  case msg of
+    -- Peer is alive and Pong'ed the server
+    Pong -> return (Right (set peerLastPongTime t p))
+    -- Peer signalled a disconnect
+    Disconnect -> return (Right (set peerState PeerDisconnected p))
+    -- Peer sent a token
+    -- Must be in valid list of server tokens
+    (SendToken tk) -> updateToken tk p
+    -- Peer sent unknown message
+    _ -> return (Left (MessageUnknown, p))
 
 updateToken :: (Monad m, MonadReader PeerEnv m)
-  => Token -> Peer -> m (Either (SMessage, Peer) Peer)
+  => Token -> Peer -> m (Either (ServerMessage, Peer) Peer)
 updateToken t p = do
   ts <- asks (view peerEnvTokens)
   if t `elem` ts
@@ -113,9 +123,9 @@ updateToken t p = do
   else return (Left (InvalidToken, p))
 
 -- | 'Peer' received a relevant message, update internal state.
-updateMessageQueue :: Integer -> CMessage -> Peer -> Peer
-updateMessageQueue t msg =
-  over peerMsgQueue (msg :) .
+processClientEvent :: Integer -> ClientEvent -> Peer -> Peer
+processClientEvent t msg =
+  over peerEventQueue (msg :) .
   set peerLastMsgTime t .
   over peerMsgCount (+ 1)
 
@@ -130,9 +140,9 @@ checkBadPeer r p
   | r == chk  = set peerState PeerDisconnected p
   | otherwise = p
   where
-    f c CUnknown = c + 1
-    f c _        = c
-    chk = foldl' f 0 (view peerMsgQueue p)
+    f c ClientEventUnknown = c + 1
+    f c _                  = c
+    chk = foldl' f 0 (view peerEventQueue p)
 
 runPeer' :: PeerEnv -> Handle -> TVar Peer -> IO ()
 runPeer' e h p = do
@@ -151,4 +161,4 @@ runPeer' e h p = do
           Left (m, wp) -> writeTVar p wp >> return (Just m)
       case out of
         Nothing -> return ()
-        Just m  -> serverSend h m
+        Just m  -> serverSend h (MessageServer m)
