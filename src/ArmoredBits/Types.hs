@@ -94,8 +94,6 @@ mkPeerId = Tagged
 data PeerState
   = PeerConnected
   | PeerAuthenticated
-  | PeerNeedsInitialState
-  | PeerProcessing Rate
   | PeerDisconnected
   deriving (Eq, Show)
 

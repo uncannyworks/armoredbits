@@ -129,6 +129,7 @@ peerSpec = hspec $ do
       v <- readTVarIO p
 
       view peerToken v `shouldBe` Just validToken
+      view peerState v `shouldBe` PeerAuthenticated
 
       removeFile handle
 

@@ -136,7 +136,7 @@ updateToken :: (Monad m, MonadReader PeerEnv m)
 updateToken t p = do
   ts <- asks (view peerEnvTokens)
   if t `elem` ts
-  then return (Right (set peerToken (Just t) p))
+  then return (Right (set peerState PeerAuthenticated . set peerToken (Just t) $ p))
   else return (Left (InvalidToken, p))
 
 -- | 'Peer' received a relevant message, update internal state.
